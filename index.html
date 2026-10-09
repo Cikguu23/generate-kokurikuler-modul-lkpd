@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator Modul Kokurikuler & LKPD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/docx@8/build/index.js"></script>
+    <style>
+        /* Gaya khusus untuk area pratinjau dokumen agar terlihat seperti kertas HVS */
+        #preview-content {
+            background-color: white;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            min-height: 297mm; /* Mendekati ukuran A4 */
+            max-width: 210mm;
+            margin: 0 auto;
+            color: black;
+        }
+        
+        /* Gaya default untuk elemen HTML yang di-generate AI agar rapi di preview */
+        #preview-content h1 { font-size: 1.5rem; font-weight: bold; text-align: center; margin-bottom: 1rem; }
+        #preview-content h2 { font-size: 1.25rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; background-color: #fef08a; padding: 0.2rem 0.5rem; } /* Warna kuning seperti di referensi */
+        #preview-content h3 { font-size: 1.1rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
+        #preview-content p { margin-bottom: 0.5rem; line-height: 1.5; }
+        #preview-content table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+        #preview-content th, #preview-content td { border: 1px solid #000; padding: 0.5rem; vertical-align: top; }
+        #preview-content ul, #preview-content ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+        #preview-content li { margin-bottom: 0.25rem; }
+        
+        .page-break { page-break-before: always; }
+        
+        /* Loader spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen">
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
+        
+        <!-- Kolom Kiri: Form Input -->
+        <div class="w-full lg:w-1/3 bg-white p-6 rounded-xl shadow-md h-fit overflow-y-auto max-h-[90vh]">
+            <h2 class="text-2xl font-bold mb-6 text-blue-600 border-b pb-2">Pengaturan Modul</h2>
+            
+            <form id="generator-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Google AI Studio API Key</label>
+                    <input type="password" id="api-key" required placeholder="Masukkan API Key Anda" 
+                           class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">Dapatkan di <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 hover:underline">Google AI Studio</a>. (Disimpan sementara di memori browser).</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Model AI</label>
+                    <select id="model-ai" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Stabil, seimbang)</option>
+                        <option value="gemini-3.5-flash">Gemini 3.5 Flash (Terbaru, direkomendasikan)</option>
+                        <option value="gemini-3.6-flash">Gemini 3.6 Flash (Paling baru)</option>
+                        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Lebih Pintar)</option>
+                        <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Tercepat/termurah)</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Catatan: Gemini 1.5 dan 2.0 sudah dipensiunkan oleh Google, sehingga tidak lagi tersedia di daftar ini.</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Topik / Tema Kokurikuler</label>
+                    <input type="text" id="tema" required placeholder="Contoh: Cerdas Menabung, Literasi Digital, dll" 
+                           class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="template-mode" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="template-mode" class="text-sm font-medium text-gray-700">Jadikan sebagai Template (nama sekolah dikosongkan)</label>
+                    </div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Pendidikan</label>
+                    <input type="text" id="sekolah" required placeholder="Contoh: SD Negeri 1 Nusantara" 
+                           class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400">
+                    <p class="text-xs text-gray-500 mt-1">Centang kotak di atas jika dokumen ini untuk dijual/dibagikan sebagai template ke banyak sekolah — kolom nama sekolah akan dikosongkan (garis titik-titik) agar bisa diisi manual oleh pembeli.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Jenjang</label>
+                        <select id="jenjang" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Pilih Jenjang</option>
+                            <option value="SD">SD/MI</option>
+                            <option value="SMP">SMP/MTs</option>
+                            <option value="SMA">SMA/MA</option>
+                            <option value="SMK">SMK/MAK</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fase</label>
+                        <select id="fase" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Pilih Fase</option>
+                            <option value="Fase A (Kelas 1-2 SD)">Fase A (Kls 1-2)</option>
+                            <option value="Fase B (Kelas 3-4 SD)">Fase B (Kls 3-4)</option>
+                            <option value="Fase C (Kelas 5-6 SD)">Fase C (Kls 5-6)</option>
+                            <option value="Fase D (Kelas 7-9 SMP)">Fase D (Kls 7-9)</option>
+                            <option value="Fase E (Kelas 10 SMA/SMK)">Fase E (Kls 10)</option>
+                            <option value="Fase F (Kelas 11-12 SMA/SMK)">Fase F (Kls 11-12)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
+                        <select id="kelas" required class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Pilih Kelas</option>
+                            <option value="1">Kelas 1</option>
+                            <option value="2">Kelas 2</option>
+                            <option value="3">Kelas 3</option>
+                            <option value="4">Kelas 4</option>
+                            <option value="5">Kelas 5</option>
+                            <option value="6">Kelas 6</option>
+                            <option value="7">Kelas 7</option>
+                            <option value="8">Kelas 8</option>
+                            <option value="9">Kelas 9</option>
+                            <option value="10">Kelas 10</option>
+                            <option value="11">Kelas 11</option>
+                            <option value="12">Kelas 12</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Alokasi Waktu</label>
+                        <input type="text" id="waktu" required placeholder="Contoh: 2 x 35 Menit" 
+                               class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tahap Proyek</label>
+                        <input type="text" id="tahap" required placeholder="Contoh: Pengenalan, Perencanaan, Aksi" 
+                               class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Pertemuan Ke-</label>
+                        <input type="number" id="pertemuan" required min="1" placeholder="Contoh: 1" 
+                               class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fokus Kegiatan</label>
+                    <input type="text" id="fokus" required placeholder="Contoh: Memahami perbedaan kebutuhan dan keinginan" 
+                           class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Deskripsi Aktivitas</label>
+                    <textarea id="deskripsi" required rows="2" placeholder="Contoh: Murid mengelompokkan gambar barang ke dalam kebutuhan atau keinginan." 
+                              class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Hasil Nyata (Untuk LKPD)</label>
+                    <input type="text" id="hasil_nyata" required placeholder="Contoh: Tabel pengelompokan barang yang terisi dengan benar" 
+                           class="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <button type="submit" id="generate-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition duration-200 mt-4 flex justify-center items-center shadow-lg">
+                    <span>Generate Modul & LKPD</span>
+                </button>
+                
+                <div id="error-message" class="hidden text-red-500 text-sm mt-2 font-medium text-center bg-red-100 p-2 rounded"></div>
+            </form>
+        </div>
+
+        <!-- Kolom Kanan: Preview dan Download -->
+        <div class="w-full lg:w-2/3 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Pratinjau Dokumen</h2>
+                <button id="download-btn" class="hidden bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-200 flex items-center shadow">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span id="download-btn-label">Unduh ke Word (.docx)</span>
+                </button>
+            </div>
+
+            <div class="bg-gray-200 p-4 rounded-xl flex-grow overflow-y-auto max-h-[85vh] border-2 border-dashed border-gray-300">
+                <div id="preview-content" class="hidden">
+                    <!-- Konten AI akan muncul di sini -->
+                </div>
+                <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p>Silakan isi form di sebelah kiri dan klik Generate.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('generator-form');
+        const generateBtn = document.getElementById('generate-btn');
+        const previewContent = document.getElementById('preview-content');
+        const emptyState = document.getElementById('empty-state');
+        const downloadBtn = document.getElementById('download-btn');
+        const downloadBtnLabel = document.getElementById('download-btn-label');
+        const errorMsg = document.getElementById('error-message');
+        const templateModeCheckbox = document.getElementById('template-mode');
+        const sekolahInputEl = document.getElementById('sekolah');
+
+        // Menyimpan API Key di localStorage agar pengguna tidak perlu mengetik ulang setiap kali refresh
+        const storedApiKey = localStorage.getItem('gemini_api_key');
+        if (storedApiKey) {
+            document.getElementById('api-key').value = storedApiKey;
+        }
+
+        // Toggle field Satuan Pendidikan saat mode Template diaktifkan
+        templateModeCheckbox.addEventListener('change', () => {
+            if (templateModeCheckbox.checked) {
+                sekolahInputEl.disabled = true;
+                sekolahInputEl.value = '';
+                sekolahInputEl.placeholder = 'Dikosongkan (mode Template aktif)';
+                sekolahInputEl.removeAttribute('required');
+            } else {
+                sekolahInputEl.disabled = false;
+                sekolahInputEl.placeholder = 'Contoh: SD Negeri 1 Nusantara';
+                sekolahInputEl.setAttribute('required', 'required');
+            }
+        });
+
+        // Variabel global untuk menyimpan raw HTML hasil generate
+        let generatedHtmlContent = "";
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Ambil nilai input
+            const userApiKey = document.getElementById('api-key').value.trim();
+            if(!userApiKey) {
+                showError("API Key tidak boleh kosong!");
+                return;
+            }
+            // Simpan API Key ke local storage
+            localStorage.setItem('gemini_api_key', userApiKey);
+
+            const templateMode = templateModeCheckbox.checked;
+            const sekolah = templateMode ? '' : sekolahInputEl.value.trim();
+
+            if (!templateMode && !sekolah) {
+                showError("Isi Satuan Pendidikan, atau centang 'Jadikan sebagai Template' jika nama sekolah ingin dikosongkan.");
+                return;
+            }
+
+            const modelAi = document.getElementById('model-ai').value;
+            const tema = document.getElementById('tema').value;
+            const jenjang = document.getElementById('jenjang').value;
+            const fase = document.getElementById('fase').value;
+            const kelas = document.getElementById('kelas').value;
+            const waktu = document.getElementById('waktu').value;
+            const tahap = document.getElementById('tahap').value;
+            const pertemuan = document.getElementById('pertemuan').value;
+            const fokus = document.getElementById('fokus').value;
+            const deskripsi = document.getElementById('deskripsi').value;
+            const hasil_nyata = document.getElementById('hasil_nyata').value;
+
+            // UI State: Loading
+            generateBtn.innerHTML = '<span class="loader"></span> Memproses AI...';
+            generateBtn.disabled = true;
+            generateBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            errorMsg.classList.add('hidden');
+            previewContent.innerHTML = ''; // Bersihkan layar sebelumnya
+
+            try {
+                // Panggil API Gemini
+                const resultText = await generateFromGemini(
+                    userApiKey, modelAi, tema, sekolah, templateMode, jenjang, fase, kelas, waktu, 
+                    tahap, pertemuan, fokus, deskripsi, hasil_nyata
+                );
+                
+                // Bersihkan respon jika AI mengembalikan blok markdown ```html ... ```
+                let cleanHtml = resultText.replace(/```html/gi, '').replace(/```/g, '').trim();
+                
+                generatedHtmlContent = cleanHtml;
+                
+                // Tampilkan hasil
+                previewContent.innerHTML = cleanHtml;
+                previewContent.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                downloadBtn.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error generating content:", error);
+                showError("Gagal membuat modul. " + error.message);
+            } finally {
+                // UI State: Reset
+                generateBtn.innerHTML = '<span>Generate Modul & LKPD</span>';
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        });
+
+        function showError(message) {
+            errorMsg.textContent = message;
+            errorMsg.classList.remove('hidden');
+        }
+
+        async function generateFromGemini(apiKey, modelAi, tema, sekolah, templateMode, jenjang, fase, kelas, waktu, tahap, pertemuan, fokus, deskripsi, hasil_nyata) {
+            const systemPrompt = `Kamu adalah seorang ahli pendidikan di Indonesia yang ahli dalam menyusun Rencana Pembelajaran dan LKPD berbasis Kurikulum Merdeka.
+Tugasmu adalah menghasilkan SATU dokumen Rencana Pembelajaran Kokurikuler dan LKPD untuk 1 kali pertemuan saja.
+PENTING: Output HARUS murni format HTML tanpa markdown. Gunakan tag standar seperti <h1>, <h2>, <table> (dengan atribut border="1" agar rapi di word), <tr>, <td>, <ul>, <ol>, <li>, <p>, dan <b>. Jangan gunakan styling CSS internal yang rumit, cukup HTML dasar yang strukturnya rapi untuk diexport ke Word. Pastikan konten menyesuaikan tingkat usia siswa pada Jenjang dan Fase yang diberikan.`;
+
+            const templateNote = templateMode
+                ? `\n\nCATATAN PENTING SOAL TEMPLATE: Dokumen ini adalah TEMPLATE KOSONG yang akan digunakan ulang oleh banyak sekolah berbeda. JANGAN mengarang atau mengisi nama sekolah tertentu di bagian manapun pada dokumen. Pada baris "Satuan Pendidikan" di tabel identitas, tuliskan garis titik-titik kosong yang cukup panjang seperti "....................................................." agar nantinya bisa diisi tulis tangan atau diketik manual oleh pengguna template.`
+                : '';
+
+            const userPrompt = `Buatkan Rencana Pembelajaran Kokurikuler dan Lembar Kerja Peserta Didik (LKPD).
+Gunakan detail data berikut secara presisi:
+- Satuan Pendidikan: ${templateMode ? '(DIKOSONGKAN UNTUK TEMPLATE - lihat catatan penting di bawah)' : sekolah}
+- Tema/Topik Proyek: ${tema}
+- Tahap Proyek: ${tahap}
+- Jenjang: ${jenjang}
+- Kelas: ${kelas} (Fase ${fase})
+- Pertemuan Ke-: ${pertemuan}
+- Alokasi Waktu: ${waktu}
+- Fokus Kegiatan: ${fokus}
+- Deskripsi Aktivitas: ${deskripsi}
+- Hasil Nyata (Output LKPD): ${hasil_nyata}
+${templateNote}
+
+Struktur HTML wajib mengikuti format tabel/heading di bawah ini (gunakan bahasa Indonesia yang formal dan profesional):
+
+[BAGIAN 1: RPP]
+<h1>RENCANA PEMBELAJARAN KOKURIKULER</h1>
+<p style="text-align:center;"><b>Tahap: ${tahap} | Pertemuan Ke-${pertemuan}</b></p>
+<br>
+
+<h2>IDENTITAS KEGIATAN</h2>
+(Buat tabel 2 kolom yang rapi. Baris 1: Satuan Pendidikan, Baris 2: Jenjang/Kelas/Fase, Baris 3: Tema Proyek, Baris 4: Fokus Kegiatan, Baris 5: Alokasi Waktu).
+
+<h2>DIMENSI PROFIL PELAJAR PANCASILA</h2>
+(Buat list berpoin terkait 2-3 dimensi yang relevan dengan fokus kegiatan).
+
+<h2>TUJUAN PEMBELAJARAN & PERTANYAAN PEMANTIK</h2>
+<b>Tujuan Pembelajaran (Pertemuan ${pertemuan}):</b>
+(Jabarkan tujuan terkait sikap, pengetahuan, keterampilan sesuai deskripsi aktivitas).
+<br><br>
+<b>Pertanyaan Pemantik:</b>
+(Buat 2-3 pertanyaan pemantik).
+
+<h2>SARANA, PRASARANA, DAN MEDIA</h2>
+(Buat list alat, bahan yang dibutuhkan untuk aktivitas ini).
+
+<h2>RENCANA PELAKSANAAN KEGIATAN (Skenario)</h2>
+<p><i>Deskripsi Umum Aktivitas: ${deskripsi}</i></p>
+(Bagi menjadi 3 sub judul: <b>1. Kegiatan Awal (Pendahuluan)</b>, <b>2. Kegiatan Inti</b>, <b>3. Kegiatan Penutup</b>. Deskripsikan aktivitas guru dan murid dengan jelas, step-by-step dalam bentuk list).
+
+<h2>ASESMEN (PENILAIAN)</h2>
+(Jelaskan cara penilaian formatif. Kaitkan dengan hasil nyata: ${hasil_nyata}).
+
+<br><br>
+(Tambahkan area tanda tangan untuk Mengetahui Kepala Sekolah dan Guru Kelas di bagian bawah menggunakan tabel dengan atribut border="0" tanpa border dengan jarak yang cukup).
+
+<div style="page-break-before: always; clear: both;"></div> <!-- PEMBATAS HALAMAN UNTUK LKPD -->
+
+[BAGIAN 2: LKPD]
+<h1>LEMBAR KERJA PESERTA DIDIK (LKPD) - PERTEMUAN ${pertemuan}</h1>
+<h3 style="text-align:center;">Topik: ${fokus}</h3>
+<br>
+(Buat tabel informasi siswa: Nama, Kelas, Tanggal).
+
+<br>
+<b>Petunjuk Pengerjaan:</b> 
+(Tuliskan langkah pengerjaan yang jelas, berikan 3-4 langkah).
+<br><br>
+
+<b>AKTIVITAS UTAMA:</b>
+(Buatkan format kerja sesuai dengan "Deskripsi Aktivitas" (${deskripsi}) dan harus menghasilkan "Hasil Nyata" berupa ${hasil_nyata}.
+PENTING: Desain LKPD harus mempertimbangkan rentang usia kelas ${kelas}. Sediakan area kosong yang luas. Gunakan tabel kosong, kotak, atau garis bawah ____________________ yang cukup panjang agar siswa bisa menulis, menggambar, atau menempel jawabannya di atas kertas hasil print. Buatlah interaktif!).
+`;
+            // URL endpoint disesuaikan dengan pilihan model
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelAi}:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [{ text: userPrompt }]
+                    }
+                ],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    maxOutputTokens: 8192
+                }
+            };
+
+            // Implementasi Exponential Backoff (Hanya untuk error 5xx atau 429)
+            let retries = 3;
+            let delay = 1000;
+            let lastError = null;
+
+            while (retries > 0) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        let errorMessage = response.statusText;
+                        try {
+                            const errData = await response.json();
+                            errorMessage = errData.error?.message || errorMessage;
+                        } catch (parseErr) {
+                            // respons error bukan JSON, gunakan statusText saja
+                        }
+
+                        // Error 404 biasanya berarti nama model salah/sudah tidak tersedia
+                        if (response.status === 404) {
+                            throw new Error(`Model "${modelAi}" tidak ditemukan (404). Model ini mungkin sudah dipensiunkan oleh Google. Coba ganti ke model lain di dropdown. Detail: ${errorMessage}`);
+                        }
+
+                        // Jangan retry jika error dari client (API Key salah, quota habis permanen, dll)
+                        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                            throw new Error(`Error ${response.status}: ${errorMessage}`);
+                        }
+                        throw new Error(`API Error (${response.status}): ${errorMessage}`);
+                    }
+
+                    const data = await response.json();
+
+                    // Cek apakah ada kandidat sama sekali
+                    if (!data.candidates || data.candidates.length === 0) {
+                        const blockReason = data.promptFeedback?.blockReason;
+                        if (blockReason) {
+                            throw new Error(`Permintaan diblokir oleh filter keamanan Google (alasan: ${blockReason}). Coba ubah kata-kata pada Tema/Fokus/Deskripsi.`);
+                        }
+                        throw new Error("Respon AI kosong (tidak ada kandidat). Coba lagi.");
+                    }
+
+                    const candidate = data.candidates[0];
+
+                    // Cek finishReason yang bermasalah (SAFETY, RECITATION, dll)
+                    if (candidate.finishReason && candidate.finishReason !== "STOP" && candidate.finishReason !== "MAX_TOKENS") {
+                        throw new Error(`AI menghentikan proses karena alasan: ${candidate.finishReason}. Coba ubah sedikit kata-kata pada input Anda.`);
+                    }
+
+                    const textResult = candidate.content?.parts?.[0]?.text;
+                    if (textResult) {
+                        return textResult;
+                    } else {
+                        throw new Error("Respon AI tidak berisi teks. Format API mungkin berubah, coba model lain.");
+                    }
+                    
+                } catch (error) {
+                    lastError = error;
+                    // Jika error spesifik (400/401/403/404), langsung lemparkan tanpa retry
+                    if (/^(Error 4|Model ".*" tidak ditemukan|Permintaan diblokir|AI menghentikan|Respon AI)/.test(error.message)) {
+                        throw error;
+                    }
+
+                    retries--;
+                    if (retries === 0) throw error;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
+                }
+            }
+            throw lastError || new Error("Gagal menghubungi API setelah beberapa percobaan.");
+        }
+
+        /* =========================================================================
+           KONVERSI HTML -> DOCX ASLI (OOXML) MENGGUNAKAN LIBRARY "docx"
+           ========================================================================= */
+
+        const NO_BORDER = { style: docx.BorderStyle.NONE, size: 0, color: "FFFFFF" };
+        const NO_BORDERS_TABLE = {
+            top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
+            insideHorizontal: NO_BORDER, insideVertical: NO_BORDER
+        };
+        const NO_BORDERS_CELL = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER };
+
+        // Mengubah isi elemen inline (teks, <b>, <i>, <u>, <br>) menjadi array TextRun
+        function textRunsFromInline(node, baseOptions = {}) {
+            let runs = [];
+            node.childNodes.forEach(child => {
+                if (child.nodeType === Node.TEXT_NODE) {
+                    const text = child.textContent;
+                    if (text !== '') {
+                        runs.push(new docx.TextRun({
+                            text: text,
+                            bold: !!baseOptions.bold,
+                            italics: !!baseOptions.italics,
+                            underline: baseOptions.underline ? {} : undefined,
+                            size: baseOptions.size || 24
+                        }));
+                    }
+                } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    const tag = child.tagName.toLowerCase();
+                    if (tag === 'br') {
+                        runs.push(new docx.TextRun({ text: '', break: 1, size: baseOptions.size || 24 }));
+                    } else if (tag === 'b' || tag === 'strong') {
+                        runs = runs.concat(textRunsFromInline(child, { ...baseOptions, bold: true }));
+                    } else if (tag === 'i' || tag === 'em') {
+                        runs = runs.concat(textRunsFromInline(child, { ...baseOptions, italics: true }));
+                    } else if (tag === 'u') {
+                        runs = runs.concat(textRunsFromInline(child, { ...baseOptions, underline: true }));
+                    } else {
+                        runs = runs.concat(textRunsFromInline(child, baseOptions));
+                    }
+                }
+            });
+            return runs;
+        }
+
+        // Mengubah elemen blok (h1, h2, p, table, ul, ol, div) menjadi array Paragraph/Table docx
+        function convertBlock(containerNode) {
+            const elements = [];
+            Array.from(containerNode.childNodes).forEach(child => {
+                if (child.nodeType === Node.COMMENT_NODE) return;
+
+                if (child.nodeType === Node.TEXT_NODE) {
+                    if (child.textContent.trim() !== '') {
+                        elements.push(new docx.Paragraph({
+                            children: [new docx.TextRun({ text: child.textContent, size: 24 })]
+                        }));
+                    }
+                    return;
+                }
+                if (child.nodeType !== Node.ELEMENT_NODE) return;
+
+                const tag = child.tagName.toLowerCase();
+                const styleAttr = (child.getAttribute('style') || '').toLowerCase();
+                const isCentered = /text-align\s*:\s*center/.test(styleAttr);
+
+                if (tag === 'h1') {
+                    elements.push(new docx.Paragraph({
+                        children: textRunsFromInline(child, { bold: true, size: 32 }),
+                        alignment: docx.AlignmentType.CENTER,
+                        spacing: { after: 200 }
+                    }));
+                } else if (tag === 'h2') {
+                    elements.push(new docx.Paragraph({
+                        children: textRunsFromInline(child, { bold: true, size: 28 }),
+                        shading: { type: docx.ShadingType.CLEAR, fill: "FEF08A" },
+                        spacing: { before: 300, after: 150 }
+                    }));
+                } else if (tag === 'h3') {
+                    elements.push(new docx.Paragraph({
+                        children: textRunsFromInline(child, { bold: true, size: 26 }),
+                        alignment: isCentered ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
+                        spacing: { before: 200, after: 100 }
+                    }));
+                } else if (tag === 'p') {
+                    const runs = textRunsFromInline(child, { size: 24 });
+                    elements.push(new docx.Paragraph({
+                        children: runs.length ? runs : [new docx.TextRun({ text: '', size: 24 })],
+                        alignment: isCentered ? docx.AlignmentType.CENTER : docx.AlignmentType.JUSTIFIED,
+                        spacing: { after: 120 }
+                    }));
+                } else if (tag === 'ul') {
+                    Array.from(child.children).forEach(li => {
+                        if (li.tagName.toLowerCase() !== 'li') return;
+                        elements.push(new docx.Paragraph({
+                            children: textRunsFromInline(li, { size: 24 }),
+                            bullet: { level: 0 },
+                            spacing: { after: 80 }
+                        }));
+                    });
+                } else if (tag === 'ol') {
+                    let num = 1;
+                    Array.from(child.children).forEach(li => {
+                        if (li.tagName.toLowerCase() !== 'li') return;
+                        const runs = textRunsFromInline(li, { size: 24 });
+                        elements.push(new docx.Paragraph({
+                            children: [new docx.TextRun({ text: `${num}. `, size: 24 }), ...runs],
+                            spacing: { after: 80 }
+                        }));
+                        num++;
+                    });
+                } else if (tag === 'table') {
+                    const borderAttr = child.getAttribute('border');
+                    const useBorder = borderAttr !== '0';
+                    const rows = [];
+                    Array.from(child.querySelectorAll('tr')).forEach(tr => {
+                        const cells = [];
+                        Array.from(tr.children).forEach(cellNode => {
+                            const cellTag = cellNode.tagName.toLowerCase();
+                            if (cellTag !== 'td' && cellTag !== 'th') return;
+                            let cellParas = convertBlock(cellNode);
+                            if (cellParas.length === 0) {
+                                cellParas = [new docx.Paragraph({
+                                    children: [new docx.TextRun({ text: cellNode.textContent || '', size: 24, bold: cellTag === 'th' })]
+                                })];
+                            }
+                            cells.push(new docx.TableCell({
+                                children: cellParas,
+                                borders: useBorder ? undefined : NO_BORDERS_CELL,
+                                shading: cellTag === 'th' ? { fill: 'EFEFEF' } : undefined,
+                                margins: { top: 80, bottom: 80, left: 100, right: 100 }
+                            }));
+                        });
+                        if (cells.length > 0) {
+                            rows.push(new docx.TableRow({ children: cells }));
+                        }
+                    });
+                    if (rows.length > 0) {
+                        elements.push(new docx.Table({
+                            rows: rows,
+                            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                            borders: useBorder ? undefined : NO_BORDERS_TABLE
+                        }));
+                        // spasi setelah tabel
+                        elements.push(new docx.Paragraph({ children: [new docx.TextRun({ text: '', size: 12 })] }));
+                    }
+                } else if (tag === 'div') {
+                    if (styleAttr.includes('page-break-before')) {
+                        elements.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+                    } else {
+                        elements.push(...convertBlock(child));
+                    }
+                } else if (tag === 'br') {
+                    elements.push(new docx.Paragraph({ children: [] }));
+                } else {
+                    // tag lain (span, section, dst) - masuk lagi ke dalam
+                    elements.push(...convertBlock(child));
+                }
+            });
+            return elements;
+        }
+
+        function buildDocxBlobFromHtml(htmlString) {
+            if (typeof docx === 'undefined') {
+                throw new Error("Library docx.js belum termuat. Periksa koneksi internet Anda lalu muat ulang halaman.");
+            }
+            const parser = new DOMParser();
+            const parsedDoc = parser.parseFromString(`<div id="root-wrap">${htmlString}</div>`, 'text/html');
+            const root = parsedDoc.getElementById('root-wrap');
+            const bodyChildren = convertBlock(root);
+
+            const documentObj = new docx.Document({
+                styles: {
+                    default: {
+                        document: {
+                            run: { font: "Times New Roman", size: 24 }
+                        }
+                    }
+                },
+                sections: [
+                    {
+                        properties: {
+                            page: {
+                                margin: { top: 1418, bottom: 1418, left: 1418, right: 1418 } // ~2.5cm
+                            }
+                        },
+                        children: bodyChildren
+                    }
+                ]
+            });
+
+            return docx.Packer.toBlob(documentObj);
+        }
+
+        // Tombol Download -> ekspor ke .docx asli (OOXML), bukan trik HTML
+        downloadBtn.addEventListener('click', async () => {
+            if (!generatedHtmlContent) return;
+
+            downloadBtnLabel.textContent = 'Membuat file .docx...';
+            downloadBtn.disabled = true;
+
+            try {
+                const blob = await buildDocxBlobFromHtml(generatedHtmlContent);
+
+                const temaStr = document.getElementById('tema').value.replace(/[^a-zA-Z0-9]/g, '_') || 'Dokumen';
+                const filename = `Modul_LKPD_${temaStr}.docx`;
+
+                const url = URL.createObjectURL(blob);
+                const downloadLink = document.createElement("a");
+                downloadLink.href = url;
+                downloadLink.download = filename;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("Gagal membuat file docx:", error);
+                showError("Gagal membuat file .docx: " + error.message);
+            } finally {
+                downloadBtnLabel.textContent = 'Unduh ke Word (.docx)';
+                downloadBtn.disabled = false;
+            }
+        });
+
+    </script>
+</body>
+</html>
